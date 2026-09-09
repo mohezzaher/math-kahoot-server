@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // يسمح بالاتصال من موقع Netlify الخاص بك
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
@@ -52,14 +52,13 @@ io.on("connection", (socket) => {
       streak: 0,
       answerOrder: null,
       isCorrect: null,
-      lastAddedPoints: 0, // حقل لحفظ النقاط المكتسبة للسؤال الحالي
+      lastAddedPoints: 0,
     });
 
     socket.emit("join_success");
     io.to(pin).emit("update_players", room.players);
   });
 
-  // إضافة استقبال وإرسال رسائل الدردشة
   socket.on("send_message", ({ pin, message }) => {
     const room = rooms[pin];
     if (room) {
@@ -73,7 +72,6 @@ io.on("connection", (socket) => {
             minute: "2-digit",
           }),
         };
-        // إرسال الرسالة لجميع الموجودين في الغرفة
         io.to(pin).emit("receive_message", chatData);
       }
     }
@@ -92,7 +90,8 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("send_answer", ({ pin, selectedIndex, timeRemaining }) => {
+  // تحديث معالجة الإجابة لدعم مختلف أنواع الأسئلة
+  socket.on("send_answer", ({ pin, answer, timeRemaining }) => {
     const room = rooms[pin];
     if (room && room.selectedQuestions.length > 0) {
       const currentQ = room.selectedQuestions[room.currentQuestion];
@@ -102,13 +101,21 @@ io.on("connection", (socket) => {
         room.answeredCount += 1;
         player.answerOrder = room.answeredCount;
 
-        const correctIdx =
-          currentQ.correct !== undefined
-            ? currentQ.correct
-            : currentQ.correctIndex;
-        const isCorrect = selectedIndex === correctIdx;
-        player.isCorrect = isCorrect;
+        let isCorrect = false;
+        const qType = currentQ.type || 'mcq'; // 'mcq', 'true_false', 'direct_input'
 
+        if (qType === 'mcq') {
+          // مقارنة الرقم المكتبي أو المؤشر
+          const correctIdx = currentQ.correct !== undefined ? currentQ.correct : currentQ.correctIndex;
+          isCorrect = parseInt(answer) === correctIdx;
+        } else if (qType === 'true_false' || qType === 'direct_input') {
+          // مقارنة النص المباشر مع تنظيف الفراغات وحالة الأحرف
+          const correctAnswer = String(currentQ.answer).trim().toLowerCase();
+          const userAnswer = String(answer).trim().toLowerCase();
+          isCorrect = userAnswer === correctAnswer;
+        }
+
+        player.isCorrect = isCorrect;
         let addedPoints = 0;
 
         if (isCorrect) {
@@ -120,17 +127,16 @@ io.on("connection", (socket) => {
           player.streak = 0;
         }
 
-        player.lastAddedPoints = addedPoints; // إسناد النقاط المكتسبة
+        player.lastAddedPoints = addedPoints;
 
         socket.emit("answer_result", {
           isCorrect,
-          correctIndex: correctIdx,
-          selectedIndex,
+          correctAnswer: currentQ.answer || currentQ.correctIndex || currentQ.correct,
+          userAnswer: answer,
           streak: player.streak,
           addedPoints,
         });
 
-        // إرسال تحديث قائمة اللاعبين مع النقاط للجميع
         io.to(pin).emit("update_players", room.players);
       }
     }
@@ -146,7 +152,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // تصفير بيانات الإجابة للسؤال الجديد
     room.answeredCount = 0;
     room.players.forEach((p) => {
       p.answerOrder = null;
@@ -179,7 +184,6 @@ io.on("connection", (socket) => {
   }
 });
 
-// استخدام المنفذ المخصص من الاستضافة السحابية أو 5000 كخيار احتياطي عند التشغيل المحلي
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, '0.0.0.0', () => {
