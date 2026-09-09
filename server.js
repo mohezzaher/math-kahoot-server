@@ -179,4 +179,9 @@ io.on("connection", (socket) => {
   }
 });
 
-server.listen(5000, () => console.log("السيرفر يعمل على المنفذ 5000 🚀"));
+// استخدام المنفذ المخصص من الاستضافة السحابية أو 5000 كخيار احتياطي عند التشغيل المحلي
+const PORT = process.env.PORT || 5000;
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`السيرفر يعمل بنجاح على المنفذ ${PORT} 🚀`);
+});
